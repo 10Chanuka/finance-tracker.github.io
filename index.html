@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HomeFinance Assistant | Smart Household Ledger</title>
+
+    <script>
+        window.addEventListener('error', function (e) {
+            fetch('http://localhost:8080/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'error',
+                    message: e.message,
+                    filename: e.filename,
+                    lineno: e.lineno,
+                    colno: e.colno,
+                    stack: e.error ? e.error.stack : ''
+                })
+            }).catch(err => { });
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+            fetch('http://localhost:8080/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'unhandledrejection',
+                    message: e.reason ? (e.reason.message || String(e.reason)) : 'Unknown rejection',
+                    stack: e.reason ? e.reason.stack : ''
+                })
+            }).catch(err => { });
+        });
+        fetch('http://localhost:8080/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'info', message: 'Logger initialized successfully' })
+        }).catch(err => { });
+    </script>
+
+    <!-- CSS Dependencies -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- JS Dependencies (Chart.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <!-- ==================== AUTHENTICATION CONTAINER ==================== -->
+    <div id="auth-container" class="container">
+        <div class="auth-container card animate-fade-in">
+            <div class="auth-header">
+                <div class="auth-logo">
+                    <div class="brand-logo" style="width: 50px; height: 50px; font-size: 1.5rem;">
+                        <i class="fas fa-house-chimney"></i>
+                    </div>
+                </div>
+                <h2 class="auth-title" id="auth-title">Welcome Back</h2>
+                <p class="auth-subtitle" id="auth-subtitle">Select your portal type to sign in.</p>
+            </div>
+
+            <!-- Portal Type Toggle Tabs -->
+            <div class="portal-tabs">
+                <button id="tab-portal-member" class="portal-tab-btn active" onclick="switchPortalTab('member')">
+                    <i class="fas fa-users"></i> Member Portal
+                </button>
+                <button id="tab-portal-admin" class="portal-tab-btn" onclick="switchPortalTab('admin')">
+                    <i class="fas fa-user-shield"></i> Admin Portal
+                </button>
+            </div>
+
+            <!-- MEMBER PORTAL VIEW -->
+            <div id="member-portal-view">
+                <!-- Member Login Form -->
+                <form id="member-login-form">
+                    <div class="form-group">
+                        <label for="member-email">Member Email</label>
+                        <input type="email" id="member-email" class="form-control" placeholder="member@house.com"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="member-password">Password</label>
+                        <input type="password" id="member-password" class="form-control" placeholder="••••••••"
+                            required>
+                    </div>
+                    <button type="submit" class="btn btn-primary"
+                        style="width: 100%; margin-top: 1rem; padding: 0.75rem;">
+                        Member Sign In <i class="fas fa-arrow-right-to-bracket"></i>
+                    </button>
+                    <div class="auth-switch">
+                        New household member? <a href="#" id="member-register-link">Register Account</a>
+                    </div>
+                </form>
+
+                <!-- Member Self-Registration Form -->
+                <form id="member-register-form" class="hidden">
+                    <div class="form-group">
+                        <label for="member-reg-email">Sign Up Email</label>
+                        <input type="email" id="member-reg-email" class="form-control" placeholder="member@house.com"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="member-reg-password">Choose Password</label>
+                        <input type="password" id="member-reg-password" class="form-control"
+                            placeholder="Min. 6 characters" minlength="6" required>
+                    </div>
+                    <button type="submit" class="btn btn-success"
+                        style="width: 100%; margin-top: 1rem; padding: 0.75rem;">
+                        Register Account <i class="fas fa-user-plus"></i>
+                    </button>
+                    <div class="auth-switch">
+                        Already have a member account? <a href="#" id="member-login-link">Back to Sign In</a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ADMIN PORTAL VIEW (Default Hidden) -->
+            <div id="admin-portal-view" class="hidden">
+                <!-- Admin Login Form -->
+                <form id="admin-login-form">
+                    <div class="form-group">
+                        <label for="admin-email">Admin Email Address</label>
+                        <input type="email" id="admin-email" class="form-control" placeholder="rasunchanuka20@gmail.com"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-password">Password</label>
+                        <input type="password" id="admin-password" class="form-control" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary"
+                        style="width: 100%; margin-top: 1rem; padding: 0.75rem;">
+                        Admin Sign In <i class="fas fa-unlock-keyhole"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PENDING APPROVAL SCREEN ==================== -->
+    <div id="pending-container" class="container hidden">
+        <div class="pending-screen card animate-fade-in">
+            <div class="pending-lock-icon">
+                <i class="fas fa-user-lock"></i>
+            </div>
+            <h2 class="auth-title" style="margin-bottom: 0.75rem;">Access Pending Approval</h2>
+            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 1.5rem;">
+                Your account (<span id="pending-user-email"
+                    style="font-weight: 700; color: var(--text-primary);">...</span>) has been registered successfully,
+                but must be approved by the administrator before you can view the finance database.
+            </p>
+
+            <div
+                style="display: flex; flex-direction: column; gap: 1rem; max-width: 320px; margin: 0 auto 1.5rem auto;">
+                <!-- WhatsApp remind button -->
+                <a id="btn-whatsapp-notify" href="#" target="_blank" class="btn btn-whatsapp">
+                    <i class="fab fa-whatsapp"></i> Notify Admin on WhatsApp
+                </a>
+
+                <!-- Email backup reminder -->
+                <a id="btn-email-notify" href="#" class="btn btn-secondary">
+                    <i class="fas fa-envelope"></i> Request Access via Email
+                </a>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+
+            <button id="pending-logout-btn" class="btn btn-secondary">
+                <i class="fas fa-arrow-right-from-bracket"></i> Sign In to Different Account
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== MAIN APPLICATION CONTAINER ==================== -->
+    <div id="app-container" class="hidden">
+
+        <!-- Header -->
+        <header>
+            <div class="container header-inner">
+                <a href="#" class="brand">
+                    <div class="brand-logo">
+                        <i class="fas fa-house-chimney"></i>
+                    </div>
+                    <span class="brand-name">HomeFinance Assistant</span>
+                </a>
+
+                <div class="header-actions">
+                    <div class="user-profile">
+                        <i class="fas fa-user" style="color: var(--text-secondary);"></i>
+                        <span id="user-email"
+                            style="font-weight: 550; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Loading...</span>
+                        <span id="user-role" class="user-role-badge">...</span>
+                    </div>
+
+                    <!-- Theme Toggle Button -->
+                    <button id="theme-toggle" class="theme-toggle-btn" title="Toggle Light/Dark Theme">
+                        <i class="fas fa-moon"></i>
+                    </button>
+
+                    <!-- Logout Button -->
+                    <button id="logout-btn" class="btn btn-secondary btn-icon" title="Logout">
+                        <i class="fas fa-arrow-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="container">
+
+            <!-- Tab Navigation Links -->
+            <nav class="nav-tabs">
+                <button id="tab-dashboard" class="tab-btn active" onclick="switchTab('dashboard')">
+                    <i class="fas fa-chart-pie"></i> Dashboard
+                </button>
+                <button id="tab-members" class="tab-btn" onclick="switchTab('members')">
+                    <i class="fas fa-users"></i> Member Accounts
+                </button>
+                <button id="tab-bills" class="tab-btn" onclick="switchTab('bills')">
+                    <i class="fas fa-file-invoice-dollar"></i> Utilities & Bills
+                </button>
+                <button id="tab-rental" class="tab-btn" onclick="switchTab('rental')">
+                    <i class="fas fa-key"></i> Rental
+                </button>
+                <button id="tab-users" class="tab-btn admin-only-nav hidden" onclick="switchTab('users')">
+                    <i class="fas fa-user-gear"></i> Manage Users
+                </button>
+            </nav>
+
+            <!-- 1. DASHBOARD SECTION -->
+            <section id="sec-dashboard" class="tab-content animate-fade-in">
+                <!-- Net Balance Summary banner -->
+                <div class="card flex-between mb-6" onclick="openRentalHistoryModal()"
+                    style="border-left: 5px solid var(--accent-blue); cursor: pointer;"
+                    title="Click to view full rental history ledger">
+                    <div>
+                        <span class="stat-title" style="font-size: 0.75rem;">Household Net Balance (Rental Page)</span>
+                        <h2 id="net-balance-val" class="mono"
+                            style="font-size: 2.25rem; font-weight: 800; color: var(--accent-blue);">LKR 0.00</h2>
+                    </div>
+                    <div style="font-size: 2.5rem; color: var(--accent-blue); opacity: 0.2;">
+                        <i class="fas fa-wallet"></i>
+                    </div>
+                </div>
+
+                <!-- Core Stats Grid -->
+                <div class="grid-stats">
+                    <!-- Stat Card 1 -->
+                    <div class="card stat-item">
+                        <div class="stat-header">
+                            <span class="stat-title">Inflow / Income</span>
+                            <div class="stat-icon" style="color: var(--success-color); background: var(--success-bg);">
+                                <i class="fas fa-arrow-trend-up"></i>
+                            </div>
+                        </div>
+                        <div id="dash-income" class="stat-value mono" style="color: var(--success-color);">LKR 0.00
+                        </div>
+                        <div class="stat-footer">Includes Rental income + recorded inputs</div>
+                    </div>
+                    <!-- Stat Card 2 -->
+                    <div class="card stat-item" onclick="openDashboardMembersModal()" style="cursor: pointer;"
+                        title="Click to view members directory and balances">
+                        <div class="stat-header">
+                            <span class="stat-title">Total Members</span>
+                            <div class="stat-icon">
+                                <i class="fas fa-users-viewfinder"></i>
+                            </div>
+                        </div>
+                        <div id="dash-members" class="stat-value mono">0</div>
+                        <div class="stat-footer">Active members listed in database</div>
+                    </div>
+                    <!-- Stat Card 3 -->
+                    <div class="card stat-item">
+                        <div class="stat-header">
+                            <span class="stat-title">Pending Bills</span>
+                            <div class="stat-icon" style="color: var(--warning-color); background: var(--warning-bg);">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                        </div>
+                        <div id="dash-pending" class="stat-value mono" style="color: var(--warning-color);">LKR 0.00
+                        </div>
+                        <div class="stat-footer">Accumulated unpaid utility list</div>
+                    </div>
+                    <!-- Stat Card 4 -->
+                    <div class="card stat-item">
+                        <div class="stat-header">
+                            <span class="stat-title">Paid Bills</span>
+                            <div class="stat-icon" style="color: var(--success-color); background: var(--success-bg);">
+                                <i class="fas fa-circle-check"></i>
+                            </div>
+                        </div>
+                        <div id="dash-paid-bills" class="stat-value mono" style="color: var(--success-color);">LKR 0.00
+                        </div>
+                        <div class="stat-footer">Cleared utility costs this cycle</div>
+                    </div>
+                </div>
+
+                <!-- Visual Detail Rows -->
+                <div class="grid-dashboard-details">
+                    <!-- Left: Recent Activity Feed -->
+                    <div class="card" style="min-height: 400px; display: flex; flex-direction: column;">
+                        <h3 class="mb-4" style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-list-ul" style="color: var(--accent-blue);"></i> Today's Operations
+                            Activity
+                        </h3>
+                        <div id="recent-activity" class="activity-list"
+                            style="flex: 1; overflow-y: auto; max-height: 280px;">
+                            <!-- Activities populated by JS -->
+                        </div>
+                        <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                            <a id="btn-whatsapp-daily" href="#" target="_blank" class="btn btn-whatsapp"
+                                style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 0.5rem; text-decoration: none;">
+                                <i class="fab fa-whatsapp"></i> Share Today's Report via WhatsApp
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Right: Expense Distribution Chart -->
+                    <div class="card" style="min-height: 400px; display: flex; flex-direction: column;">
+                        <h3 class="mb-4" style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-chart-pie" style="color: var(--accent-blue);"></i> Costs & Expense
+                            Distribution
+                        </h3>
+                        <div class="chart-container" style="flex: 1;">
+                            <canvas id="expenseChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. MEMBER ACCOUNTS SECTION -->
+            <section id="sec-members" class="tab-content hidden animate-fade-in">
+                <div class="flex-between mb-6">
+                    <div>
+                        <h2 class="section-title">Household Member Accounts</h2>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.25rem;">Allocate
+                            individual cash balances to track family shares. Click card to view history.</p>
+                    </div>
+                    <button onclick="openModal('member-modal')" class="btn btn-primary admin-only-btn">
+                        <i class="fas fa-user-plus"></i> Add Member
+                    </button>
+                </div>
+
+                <!-- Transaction Allocation Box (Admin Only) -->
+                <div id="allocation-box" class="card mb-6 admin-only-btn">
+                    <h3 class="mb-4" style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-hand-holding-dollar" style="color: var(--success-color);"></i> Allocate Member
+                        Funds (Incomes & Expenses)
+                    </h3>
+                    <form id="allocation-form"
+                        style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start;">
+                        <!-- Left Column: Member Checkboxes -->
+                        <div class="form-group"
+                            style="margin-bottom: 0; display: flex; flex-direction: column; height: 100%; width: 100%;">
+                            <div class="flex-between" style="margin-bottom: 0.5rem;">
+                                <label
+                                    style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.02em;">Target
+                                    Member(s)</label>
+                                <div style="display: flex; gap: 0.5rem; font-size: 0.75rem;">
+                                    <button type="button" id="allocation-select-all"
+                                        style="border: none; background: none; color: var(--accent-blue); font-weight: 600; cursor: pointer; padding: 0;">Select
+                                        All</button>
+                                    <span style="color: var(--text-muted);">|</span>
+                                    <button type="button" id="allocation-deselect-all"
+                                        style="border: none; background: none; color: var(--accent-blue); font-weight: 600; cursor: pointer; padding: 0;">Deselect
+                                        All</button>
+                                </div>
+                            </div>
+                            <div id="allocation-targets-container" class="custom-scrollbar"
+                                style="flex: 1; min-height: 120px; max-height: 160px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: 0.75rem; background: var(--bg-primary); display: flex; flex-direction: column; gap: 0.6rem;">
+                                <!-- Populated dynamically by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Fields & Submit -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; width: 100%;">
+                            <div class="form-group" style="grid-column: 1 / -1; margin-bottom: 0;">
+                                <label for="allocation-desc">Description</label>
+                                <input type="text" id="allocation-desc" class="form-control"
+                                    placeholder="e.g. Weekly Contribution" required>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="allocation-type">Type</label>
+                                <select id="allocation-type" class="form-control" required>
+                                    <option value="income">Income (+)</option>
+                                    <option value="expense">Expense (-)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="allocation-amount">Amount (LKR)</label>
+                                <input type="number" id="allocation-amount" class="form-control mono" placeholder="0"
+                                    min="0.01" step="0.01" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary"
+                                style="grid-column: 1 / -1; height: 42px; margin-top: 0.5rem;">
+                                <i class="fas fa-check"></i> Apply Allocation
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Grid list of member cards -->
+                <div id="members-grid" class="members-grid">
+                    <!-- Cards populated by JS -->
+                </div>
+            </section>
+
+            <!-- 3. UTILITY BILLS SECTION -->
+            <section id="sec-bills" class="tab-content hidden animate-fade-in">
+                <div class="flex-between mb-6">
+                    <div>
+                        <h2 class="section-title">Utility & Household Bills</h2>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.25rem;">Monitor bill
+                            statuses. Click card to view history log.</p>
+                    </div>
+                    <button onclick="openModal('bill-modal')" class="btn btn-primary admin-only-btn">
+                        <i class="fas fa-plus"></i> Add Utility Bill
+                    </button>
+                </div>
+
+                <!-- Grid list of utility cards (E-Bill and Water Bill) -->
+                <div id="utilities-grid" class="members-grid mb-6">
+                    <!-- Cards populated by JS -->
+                </div>
+
+                <!-- Analytical chart below utilities grid -->
+                <div class="card mt-6" style="min-height: 360px;">
+                    <h3 class="mb-4" style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-chart-column" style="color: var(--accent-blue);"></i> Monthly Utilities
+                        Analysis (LKR)
+                    </h3>
+                    <div class="chart-container" style="height: 280px; position: relative;">
+                        <canvas id="utilitiesChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. RENTAL SECTION -->
+            <section id="sec-rental" class="tab-content hidden animate-fade-in">
+                <div class="flex-between mb-6">
+                    <div>
+                        <h2 class="section-title">Household Rental Management</h2>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.25rem;">Track member
+                            monthly rental contributions, general house ledger entries, and historical archives.</p>
+                    </div>
+                    <button onclick="openModal('rental-config-modal')" class="btn btn-secondary admin-only-btn">
+                        <i class="fas fa-sliders"></i> Rent Config
+                    </button>
+                </div>
+
+                <!-- Two columns for active month contributions and general ledger -->
+                <div class="rental-two-column-layout mb-6">
+                    <!-- Block 1: Monthly Rental Contributions -->
+                    <div class="card" style="height: fit-content;">
+                        <div class="flex-between mb-4">
+                            <h3 style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-users-rectangle" style="color: var(--success-color);"></i> Rent
+                                Contributions
+                            </h3>
+                            <button onclick="openModal('rent-payment-modal')" class="btn btn-primary admin-only-btn"
+                                style="font-size: 0.75rem; padding: 0.4rem 0.8rem;">
+                                <i class="fas fa-plus"></i> Record Payment
+                            </button>
+                        </div>
+                        <p
+                            style="color: var(--text-secondary); font-size: 0.825rem; margin-bottom: 1rem; line-height: 1.4;">
+                            Expected monthly rent: <span id="rent-total-config"
+                                style="font-weight: 700; color: var(--text-primary);">LKR 25000.00</span><br>
+                            Due Day: <span id="rent-day-config"
+                                style="font-weight: 700; color: var(--text-primary);">25</span> of each month
+                        </p>
+                        <div id="rent-members-list" class="activity-list" style="max-height: 360px; overflow-y: auto;">
+                            <!-- Populated dynamically by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Block 2: General House Ledger -->
+                    <div class="card">
+                        <div class="flex-between mb-4">
+                            <h3 style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-scale-balanced" style="color: var(--accent-blue);"></i> General House
+                                Ledger
+                            </h3>
+                            <button onclick="openModal('transaction-modal')" class="btn btn-primary admin-only-btn"
+                                style="font-size: 0.75rem; padding: 0.4rem 0.8rem;">
+                                <i class="fas fa-plus"></i> Add Entry
+                            </button>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 0.825rem; margin-bottom: 1rem;">Shared
+                            operations, groceries, and operational flows.</p>
+                        <div class="table-wrapper" style="max-height: 320px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Description</th>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="general-ledger-body">
+                                    <!-- Dynamic general ledger entries -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom row: Paid Utilities and Archives -->
+                <div class="rental-two-column-layout">
+                    <!-- Block 3: Paid Utility Bills -->
+                    <div class="card">
+                        <h3 class="mb-4"
+                            style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem; color: var(--success-color);">
+                            <i class="fas fa-receipt"></i> Paid Utility Bills
+                        </h3>
+                        <p style="color: var(--text-secondary); font-size: 0.825rem; margin-bottom: 1rem;">Utility bills
+                            marked as paid in the current month.</p>
+                        <div class="table-wrapper" style="max-height: 320px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Bill Name</th>
+                                        <th>Status</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="paid-utilities-body">
+                                    <!-- Dynamic paid bills -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Block 4: History Archives (Previous Months) -->
+                    <div class="card">
+                        <h3 class="mb-4"
+                            style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary);">
+                            <i class="fas fa-history"></i> Previous Months Archives
+                        </h3>
+                        <p style="color: var(--text-secondary); font-size: 0.825rem; margin-bottom: 1rem;">Historical
+                            transactions from past ledger cycles.</p>
+                        <div class="table-wrapper" style="max-height: 320px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Month</th>
+                                        <th>Description</th>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="archive-ledger-body">
+                                    <!-- Dynamic archives -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. MANAGE USERS SECTION (ADMIN ONLY) -->
+            <section id="sec-users" class="tab-content hidden animate-fade-in">
+                <div style="display: grid; grid-template-columns: 1fr; gap: 2rem;">
+
+                    <!-- Pending Approvals Queue -->
+                    <div class="card user-queue-card">
+                        <h3 class="mb-4"
+                            style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem; color: var(--warning-color);">
+                            <i class="fas fa-user-clock"></i> Pending Access Approvals
+                        </h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Registered Email</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pending-approvals-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Active Approved Viewers -->
+                    <div class="card">
+                        <h3 class="mb-4"
+                            style="font-weight: 700; display: flex; align-items: center; gap: 0.5rem; color: var(--success-color);">
+                            <i class="fas fa-user-check"></i> Approved Household Viewers
+                        </h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Email Address</th>
+                                        <th>Access Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="active-users-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ==================== DIALOG MODALS OVERLAYS ==================== -->
+
+    <!-- 1. Member Add Modal -->
+    <div id="member-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Family Member</h3>
+                <button class="close-btn" onclick="closeModal('member-modal')"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="member-form">
+                    <div class="form-group">
+                        <label for="member-name">Member Name</label>
+                        <input type="text" id="member-name" class="form-control" placeholder="e.g. John Doe" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="member-whatsapp">WhatsApp Number</label>
+                        <input type="tel" id="member-whatsapp" class="form-control mono" placeholder="e.g. +94761234567"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="member-balance">Initial Balance (LKR)</label>
+                        <input type="number" id="member-balance" class="form-control mono" placeholder="0" min="0"
+                            required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="closeModal('member-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Member</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Utility Bill Add Modal -->
+    <div id="bill-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Utility Bill</h3>
+                <button class="close-btn" onclick="closeModal('bill-modal')"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="bill-form">
+                    <div class="form-group">
+                        <label for="bill-name">Bill Category / Name</label>
+                        <select id="bill-name" class="form-control" required>
+                            <option value="E-Bill">E-Bill</option>
+                            <option value="Water Bill">Water Bill</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="bill-amount">Bill Amount (LKR)</label>
+                            <input type="number" id="bill-amount" class="form-control mono" placeholder="0" min="0"
+                                required>
+                        </div>
+                        <div class="form-group">
+                            <label for="bill-status">Status</label>
+                            <select id="bill-status" class="form-control" required>
+                                <option value="pending">Pending</option>
+                                <option value="paid">Paid</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="closeModal('bill-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Add Bill</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Transaction Entry Add Modal -->
+    <div id="transaction-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Record Entry</h3>
+                <button class="close-btn" onclick="closeModal('transaction-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="transaction-form">
+                    <div class="form-group">
+                        <label for="trans-desc">Entry Description</label>
+                        <input type="text" id="trans-desc" class="form-control"
+                            placeholder="e.g. Weekly Grocery Shopping" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="trans-type">Record Type</label>
+                            <select id="trans-type" class="form-control">
+                                <option value="expense">Expense</option>
+                                <option value="income">Income</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="trans-amount">Amount (LKR)</label>
+                            <input type="number" id="trans-amount" class="form-control mono" placeholder="0" min="0"
+                                required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="closeModal('transaction-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Record</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Member History Modal -->
+    <div id="member-history-modal" class="modal-overlay">
+        <div class="modal" style="max-width: 680px; width: 90%;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="history-modal-title">Member Transaction History</h3>
+                <button class="close-btn" onclick="closeModal('member-history-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.5rem;">
+                <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Previous Total</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <!-- Dynamic rows populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Edit Transaction Modal -->
+    <div id="edit-transaction-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Edit Transaction</h3>
+                <button class="close-btn" onclick="closeModal('edit-transaction-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-transaction-form">
+                    <input type="hidden" id="edit-trans-id">
+                    <input type="hidden" id="edit-trans-member-id">
+                    <div class="form-group">
+                        <label for="edit-trans-desc">Description</label>
+                        <input type="text" id="edit-trans-desc" class="form-control" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-trans-type">Record Type</label>
+                            <select id="edit-trans-type" class="form-control">
+                                <option value="income">Income</option>
+                                <option value="expense">Expense</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-trans-amount">Amount (LKR)</label>
+                            <input type="number" id="edit-trans-amount" class="form-control mono" min="0.01" step="0.01"
+                                required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="closeModal('edit-transaction-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. Bill History Modal -->
+    <div id="bill-history-modal" class="modal-overlay">
+        <div class="modal" style="max-width: 680px; width: 90%;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="bill-history-modal-title">Utility History</h3>
+                <button class="close-btn" onclick="closeModal('bill-history-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.5rem;">
+                <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date Added</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bill-history-table-body">
+                            <!-- Dynamic rows populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. Edit Bill Modal -->
+    <div id="edit-bill-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Edit Utility Bill Entry</h3>
+                <button class="close-btn" onclick="closeModal('edit-bill-modal')"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-bill-form">
+                    <input type="hidden" id="edit-bill-id">
+                    <div class="form-group">
+                        <label for="edit-bill-name">Bill Category</label>
+                        <select id="edit-bill-name" class="form-control" required>
+                            <option value="E-Bill">E-Bill</option>
+                            <option value="Water Bill">Water Bill</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-bill-amount">Amount (LKR)</label>
+                            <input type="number" id="edit-bill-amount" class="form-control mono" min="0.01" step="0.01"
+                                required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-bill-status">Status</label>
+                            <select id="edit-bill-status" class="form-control" required>
+                                <option value="pending">Pending</option>
+                                <option value="paid">Paid</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="closeModal('edit-bill-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. Rental Configuration Modal -->
+    <div id="rental-config-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Rental Config Setup</h3>
+                <button class="close-btn" onclick="closeModal('rental-config-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="rental-form">
+                    <div class="form-group">
+                        <label for="rental-amount">Monthly Rent Cost (LKR)</label>
+                        <input type="number" id="rental-amount" class="form-control mono" placeholder="e.g. 35000"
+                            min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="rental-day">Monthly Due Day</label>
+                        <input type="number" id="rental-day" class="form-control mono" placeholder="1-31" min="1"
+                            max="31" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="closeModal('rental-config-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Config</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 9. Record Rent Payment Modal -->
+    <div id="rent-payment-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Record Rent Payment</h3>
+                <button class="close-btn" onclick="closeModal('rent-payment-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="rent-payment-form">
+                    <div class="form-group">
+                        <label for="rent-member-select">Select Member</label>
+                        <select id="rent-member-select" class="form-control" required>
+                            <!-- Options populated dynamically by JS -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rent-amount-input">Amount Received (LKR)</label>
+                        <input type="number" id="rent-amount-input" class="form-control mono" placeholder="0" min="0.01"
+                            step="0.01" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="closeModal('rent-payment-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Rent Payment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 10. Rental History Modal -->
+    <div id="rental-history-modal" class="modal-overlay">
+        <div class="modal" style="max-width: 720px; width: 95%;">
+            <div class="modal-header">
+                <h3 class="modal-title">Rental Ledger History</h3>
+                <button class="close-btn" onclick="closeModal('rental-history-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.5rem;">
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Chronological history
+                    of rent contributions, general ledger entries, and paid utilities.</p>
+                <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date / Month</th>
+                                <th>Description</th>
+                                <th>Category</th>
+                                <th>Amount</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rental-history-table-body">
+                            <!-- Dynamic rows populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11. Dashboard Members Modal -->
+    <div id="dashboard-members-modal" class="modal-overlay">
+        <div class="modal" style="max-width: 520px; width: 90%;">
+            <div class="modal-header">
+                <h3 class="modal-title">Household Members Directory</h3>
+                <button class="close-btn" onclick="closeModal('dashboard-members-modal')"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.5rem;">
+                <div class="table-wrapper" style="max-height: 380px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Member Name</th>
+                                <th>WhatsApp</th>
+                                <th>Net Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashboard-members-table-body">
+                            <!-- Dynamic rows populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core App Module Scripts -->
+    <script type="module" src="firebase-config.js"></script>
+    <script type="module" src="db.js"></script>
+    <script type="module" src="app.js"></script>
+
+</body>
+
+</html>
