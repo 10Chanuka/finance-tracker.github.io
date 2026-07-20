@@ -49,7 +49,8 @@ let state = {
         rentalDay: 1
     },
     currentSelectedMemberId: null, // Tracks which member's history is open
-    currentSelectedBillCategory: null // Tracks E-Bill or Water Bill history
+    currentSelectedBillCategory: null, // Tracks E-Bill or Water Bill history
+    pendingMemberAdjustment: null
 };
 
 // Subscriptions storage to clean up on logout
@@ -101,6 +102,7 @@ const elAdminOnlyBtn = document.querySelectorAll(".admin-only-btn");
 
 // Modals
 const elMemberForm = document.getElementById("member-form");
+const elMemberAdjustmentForm = document.getElementById("member-adjustment-form");
 const elBillForm = document.getElementById("bill-form");
 const elTransactionForm = document.getElementById("transaction-form");
 
@@ -463,6 +465,12 @@ window.closeModal = function (id) {
     }
     if (id === "bill-history-modal") {
         state.currentSelectedBillCategory = null;
+    }
+    if (id === "member-adjustment-modal") {
+        state.pendingMemberAdjustment = null;
+        if (elMemberAdjustmentForm) {
+            elMemberAdjustmentForm.reset();
+        }
     }
 };
 
@@ -1613,40 +1621,169 @@ elMemberForm.addEventListener("submit", async (e) => {
     }
 });
 
-// Adjust Member Balance Action
-window.adjustMemberBalance = async function (id, currentBalance, type) {
+// Allocate funds across selected members
+elAllocationForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
     if (!state.isAdminUser) return;
 
-    const label = type === "add" ? "deposit" : "withdrawal";
-    const amountStr = prompt(`Enter the amount to ${label} for this member (LKR):`);
+    const desc = document.getElementById("allocation-desc").value.trim();
+    const type = document.getElementById("allocation-type").value;
+    const amount = parseFloat(document.getElementById("allocation-amount").value) || 0;
+    const selectedMemberIds = Array.from(document.querySelectorAll("input[name='allocation-member']:checked"))
+        .map(cb => cb.value);
 
-    if (amountStr === null) return;
-
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-        alert("Please enter a valid positive number.");
+    if (!desc) {
+        alert("Please enter an allocation description.");
         return;
     }
 
-    const newBalance = type === "add" ? (currentBalance + amount) : (currentBalance - amount);
+    if (amount <= 0) {
+        alert("Please enter a valid allocation amount greater than 0.");
+        return;
+    }
+
+    if (selectedMemberIds.length === 0) {
+        alert("Please select at least one member to allocate funds to.");
+        return;
+    }
+
+    const perMemberAmount = amount / selectedMemberIds.length;
 
     try {
-        await updateMemberBalance(id, newBalance);
+        for (const memberId of selectedMemberIds) {
+            const member = state.members.find(m => m.id === memberId);
+            if (!member) continue;
 
-        // Log transaction
-        const member = state.members.find(m => m.id === id);
-        const name = member ? member.name : "Member";
-        await addTransaction(
-            `${type === 'add' ? 'Deposit' : 'Withdrawal'} (${name})`,
-            type === 'add' ? 'income' : 'expense',
-            amount,
-            id // Link member ID!
-        );
+            const currentBalance = Number(member.balance) || 0;
+            const nextBalance = type === "income"
+                ? currentBalance + perMemberAmount
+                : currentBalance - perMemberAmount;
+
+            await updateMemberBalance(memberId, nextBalance);
+            await addTransaction(
+                desc,
+                type,
+                perMemberAmount,
+                memberId,
+                false,
+                false
+            );
+        }
+
+        elAllocationForm.reset();
+        updateUI();
+        alert(`Allocation applied to ${selectedMemberIds.length} member(s).`);
     } catch (error) {
-        console.error("Adjust Balance Error:", error);
-        alert("Failed to adjust balance: " + error.message);
+        console.error("Allocation Error:", error);
+        alert("Failed to apply allocation: " + error.message);
     }
+});
+
+const elAllocationSelectAll = document.getElementById("allocation-select-all");
+if (elAllocationSelectAll) {
+    elAllocationSelectAll.addEventListener("click", () => {
+        document.querySelectorAll("input[name='allocation-member']").forEach(cb => {
+            cb.checked = true;
+        });
+    });
+}
+
+const elAllocationDeselectAll = document.getElementById("allocation-deselect-all");
+if (elAllocationDeselectAll) {
+    elAllocationDeselectAll.addEventListener("click", () => {
+        document.querySelectorAll("input[name='allocation-member']").forEach(cb => {
+            cb.checked = false;
+        });
+    });
+}
+
+// Adjust Member Balance Action
+window.adjustMemberBalance = function (id, currentBalance, type) {
+    if (!state.isAdminUser) return;
+
+    const member = state.members.find(m => m.id === id);
+    if (!member) {
+        alert("Member not found.");
+        return;
+    }
+
+    state.pendingMemberAdjustment = {
+        memberId: id,
+        type,
+        currentBalance: Number(currentBalance) || Number(member.balance) || 0
+    };
+
+    const modal = document.getElementById("member-adjustment-modal");
+    const title = document.getElementById("member-adjustment-modal-title");
+    const summary = document.getElementById("member-adjustment-summary");
+    const descInput = document.getElementById("member-adjustment-desc");
+    const amountInput = document.getElementById("member-adjustment-amount");
+
+    if (title) {
+        title.innerText = type === "add" ? "Add Amount to Member Account" : "Subtract Amount from Member Account";
+    }
+
+    if (summary) {
+        summary.innerText = `${member.name} | Current Balance: ${formatCurrency(state.pendingMemberAdjustment.currentBalance)}`;
+    }
+
+    if (descInput) descInput.value = type === "add" ? "Manual deposit" : "Manual withdrawal";
+    if (amountInput) amountInput.value = "";
+
+    openModal("member-adjustment-modal");
 };
+
+if (elMemberAdjustmentForm) {
+    elMemberAdjustmentForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!state.isAdminUser) return;
+
+        const pending = state.pendingMemberAdjustment;
+        if (!pending) {
+            alert("No member adjustment is currently open.");
+            return;
+        }
+
+        const member = state.members.find(m => m.id === pending.memberId);
+        if (!member) {
+            alert("Member not found.");
+            return;
+        }
+
+        const desc = document.getElementById("member-adjustment-desc").value.trim();
+        const amount = parseFloat(document.getElementById("member-adjustment-amount").value) || 0;
+
+        if (!desc) {
+            alert("Please enter a description.");
+            return;
+        }
+
+        if (amount <= 0) {
+            alert("Please enter a valid positive amount.");
+            return;
+        }
+
+        const currentBalance = Number(member.balance) || 0;
+        const newBalance = pending.type === "add" ? (currentBalance + amount) : (currentBalance - amount);
+
+        try {
+            await updateMemberBalance(member.id, newBalance);
+            await addTransaction(
+                `${desc} (${member.name})`,
+                pending.type === "add" ? "income" : "expense",
+                amount,
+                member.id
+            );
+
+            closeModal("member-adjustment-modal");
+            updateUI();
+            alert("Member balance updated successfully.");
+        } catch (error) {
+            console.error("Adjust Balance Error:", error);
+            alert("Failed to adjust balance: " + error.message);
+        }
+    });
+}
 
 // Delete Member
 window.deleteMemberAction = async function (id) {
